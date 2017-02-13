@@ -2,34 +2,40 @@
 
 (in-package #:xml)
 
-;; <![CDATA[CDATA]]>
-;; (:cdata CDATA)
-;; <channel>channel</channel>
-;; (:channel channel)
-;; <item><link>http://www.example.com</link></item>
-;; (:item (:link http://www.example.com))
-
 (defun element-type (characters)
   (when characters
     (cond ((char= (last1 characters) #\/) 'single)
           ((char= (first characters) #\/) 'ending)
-          ((char= (first characters) #\!) 'misc)
+          ((char= (first characters) #\!) 'cdata)
           (t 'element))))
 
 (defun element->symbol (characters)
   (symb (string-upcase (coerce characters 'string))))
 
+(defun removal (items lst)
+  (if items
+      (remove (car items)
+              (removal (cdr items) lst))
+      lst))
+
+(defun remove-whitespace (sequence)
+  (removal '(#\Tab #\Space #\Newline #\Return) sequence))
+
 (defun parse (stream)
+  "KILL ME"
   (let* ((element (read-between #\< #\> stream))
-         (type (element-type element))
-         (element (element->symbol element)))
+         (type (element-type element)))
     (when element
       (case type
-        (element (list element (read-until #\< stream)
-                       (progn (unread-1 stream) (parse stream))))
+        (element (aif (remove-whitespace (read-until #\< stream))
+                      (list (element->symbol element) (coerce it 'string)
+                            (progn (unread-1 stream)(parse stream)))
+                      (list (element->symbol element)
+                            (progn (unread-1 stream) (parse stream)))))
         (single (list element (parse stream)))
         (ending (parse stream))
-        (misc (list element (parse stream)))))))
+        (cdata (list 'cdata (coerce (collect-between #\[ #\] (remove-until #\[ element))
+                                    'string)))))))
 
 (defun test ()
   (with-input-from-string (in "<item>
