@@ -36,6 +36,16 @@
         (ending (parse stream))
         (cdata (list 'cdata (coerce (collect-between #\[ #\] (remove-until #\[ element))
                                     'string)))))))
+(defun search-xml (term xml)
+  (let ((length (length xml)))
+    (when xml
+      (if (= length 2)
+          (if (eq (car xml) term)
+              (cadr xml)
+              (search-xml term (cadr xml)))
+          (if (eq (car xml) term)
+              (getf xml term)
+              (search-xml term (caddr xml)))))))
 
 (defun test ()
   (with-input-from-string (in "<item>
