@@ -2,6 +2,21 @@
 
 (in-package #:xml)
 
+(defclass element ()
+  ((name :initarg :name :accessor name)
+   (args :initarg :args :accessor args)
+   (content :initarg :content :accessor content)))
+
+(defclass single ()
+  ((name :initarg :name :accessor name)
+   (args :initarg :args :accessor args)))
+
+(defclass ending ()
+  ((name :initarg :name :accessor name)))
+
+(defclass cdata ()
+  ((content :initarg :content :accessor content)))
+
 (defun element-type (characters)
   (when characters
     (cond ((char= (last1 characters) #\/) 'single)
@@ -10,7 +25,7 @@
           (t 'element))))
 
 (defun element->symbol (characters)
-  (symb (string-upcase (coerce characters 'string))))
+  (symb (string-upcase (coerce (collect-until #\Space characters) 'string))))
 
 (defun removal (items lst)
   (if items
@@ -21,21 +36,6 @@
 (defun remove-whitespace (sequence)
   (removal '(#\Tab #\Space #\Newline #\Return) sequence))
 
-(defun parse (stream)
-  "KILL ME"
-  (let* ((element (read-between #\< #\> stream))
-         (type (element-type element)))
-    (when element
-      (case type
-        (element (aif (remove-whitespace (read-until #\< stream))
-                      (list (element->symbol element) (coerce it 'string)
-                            (progn (unread-1 stream)(parse stream)))
-                      (list (element->symbol element)
-                            (progn (unread-1 stream) (parse stream)))))
-        (single (list element (parse stream)))
-        (ending (parse stream))
-        (cdata (list 'cdata (coerce (collect-between #\[ #\] (remove-until #\[ element))
-                                    'string)))))))
 (defun search-xml (term xml)
   (let ((length (length xml)))
     (when xml
@@ -47,13 +47,43 @@
               (getf xml term)
               (search-xml term (caddr xml)))))))
 
+
+(defun read-element (stream)
+  (let* ((element (read-between #\< #\> stream))
+         (type (element-type element))
+         (name (symb (coerce (collect-until #\Space element) 'string)))
+         (args (coerce (remove-until #\Space element) 'string))
+         (content (awhen (remove-whitespace (read-until #\< stream))
+                    (unread-1 stream)
+                    (coerce it 'string))))
+    (when element
+      (case type
+        (element (make-instance 'element :name name :content content :args args))
+        (ending (make-instance 'ending :name name))
+        (single (make-instance 'single :name name :args args))
+        (cdata  (make-instance 'cdata
+                               :content (collect-between #\[ #\]
+                                                         (remove-until #\[] element))))))))
+
+(defun parse (stream)
+  (loop for element = (read-element stream)
+     until (null element)
+     collect element))
+
 (defun test ()
-  (with-input-from-string (in "<item>
+  (with-input-from-string (in "
+        <rss>
+          <item>
             <title>TITLE</title>
             <category>CATEGORY</category>
             <link>LINK</link>
             <guid>GUID</guid>
             <description><![CDATA[CDATA]]></description>
             <pubDate>pubDate</pubDate>
-          </item>")
+          </item>
+          <item>
+            <title>TITLE2</title>
+             <category>CATEGORY2</category>
+          </item>
+        </rss>")
     (parse in)))
